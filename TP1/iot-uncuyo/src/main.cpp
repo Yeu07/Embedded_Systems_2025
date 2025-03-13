@@ -8,7 +8,7 @@ void setup() {
   for (int i = 0; i < 3; i++) {
     pinMode(leds[i], OUTPUT);
   }
-  Serial.println("Listo para recibir datos en el formato: LED_PIN,BRILLO (Ej: 9,128)");
+  Serial.println("Listo para recibir datos en el formato: LED,BRILLO (Ej: 9,128)");
 }
 
 // Función que convierte el número del pin en su índice correspondiente
@@ -44,7 +44,7 @@ void loop() {
         Serial.println("Error: Valores fuera de rango.");
       }
     } else {
-      Serial.println("Error: Formato incorrecto. Usa 'LED_PIN,BRILLO'");
+      Serial.println("Error: Formato incorrecto. Usa 'LED,BRILLO'");
     }
   }
 }
