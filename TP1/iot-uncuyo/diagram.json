@@ -214,5 +214,11 @@
     [ "pir1:GND", "ultrasonic1:GND", "black", [ "v19.2", "h47.74" ] ],
     [ "pir1:OUT", "uno:A0", "purple", [ "v9.6", "h-412.94" ] ]
   ],
-  "dependencies": {}
+  "dependencies": {},
+
+  "serialMonitor": {
+  "display": "terminal",
+  "newline": "lf",
+  "convertEol": false
+  }
 }

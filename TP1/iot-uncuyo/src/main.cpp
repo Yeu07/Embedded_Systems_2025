@@ -1,16 +1,40 @@
 #include <Arduino.h>
-#include <pitches.h>
 
-int trig=5;
-int echo=4;
+int leds[] = {9, 10, 11};
+int brillos[] = {0, 0, 0};
+int duration = 1000;
+
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(9600);
+  for (int i = 0; i < 3; i++) {
+    pinMode(leds[i], OUTPUT);
+  }
+  Serial.println("Listo para recibir datos en el formato: LED,BRILLO");
 }
 
 void loop() {
-  digitalWrite(LED_BUILTIN, HIGH);  // turn the LED on (HIGH is the voltage level)
-  delay(200);                      // wait for a second
-  digitalWrite(LED_BUILTIN, LOW);   // turn the LED off by making the voltage LOW
-  delay(200);                      // wait for a second
+
+  if (Serial.available()) {  // Si hay datos en el puerto serial
+    String data = Serial.readStringUntil('\n'); // Leer hasta el salto de línea
+    int ledIndex, brillo;
+
+    Serial.print("Data: ");
+    Serial.println(data);
+
+    // Intentar extraer los valores esperados (Ejemplo de entrada: "1,128")
+    if (sscanf(data.c_str(), "%d,%d", &ledIndex, &brillo) == 2) {
+      if (ledIndex >= 0 && ledIndex < 3 && brillo >= 0 && brillo <= 255) {
+        brillos[ledIndex] = brillo;
+        analogWrite(leds[ledIndex], brillo);
+        Serial.print("LED ");
+        Serial.print(ledIndex);
+        Serial.print(" -> Brillo: ");
+        Serial.println(brillo);
+      } else {
+        Serial.println("Error: Valores fuera de rango.");
+      }
+    } else {
+      Serial.println("Error: Formato incorrecto. Usa 'LED,BRILLO'");
+    }
+  }
 }
