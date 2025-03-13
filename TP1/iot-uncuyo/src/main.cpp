@@ -13,6 +13,7 @@ void setup()
     pinMode(leds[i], OUTPUT);
   }
   pinMode(led13, OUTPUT);
+  pinMode(ldrPin,INPUT);
   Serial.println("Listo para recibir datos en el formato: LED,BRILLO (Ej: 9,128)");
   Serial.println("Listo para recibir datos en el formato: 13,ON/OFF (Ej: 13,ON)");
 }
