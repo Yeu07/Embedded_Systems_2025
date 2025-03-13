@@ -3,6 +3,7 @@
 int leds[] = {9, 10, 11};  // Pines donde están conectados los LEDs
 int brillos[] = {0, 0, 0}; // Brillo inicial de los LEDs
 const int led13 = 13;      // Pin del led en la placa
+const int ldrPin = A3;     // Pin analógico donde está conectado el LDR
 
 void setup()
 {
@@ -81,4 +82,11 @@ void loop()
       Serial.println("Error: Formato incorrecto. Usa 'LED,BRILLO' o '13,ON/OFF'.");
     }
   }
+
+  // Leer la intensidad luminosa del LDR
+  int ldrValue = analogRead(ldrPin);
+  Serial.print("Intensidad luminosa (LDR): ");
+  Serial.println(ldrValue);
+  
+  delay(1000); // Leer cada segundo
 }
