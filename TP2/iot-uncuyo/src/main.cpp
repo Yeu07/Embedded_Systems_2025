@@ -2,12 +2,20 @@
 #include <Arduino.h>
 #include <semphr.h> // Biblioteca Mutex
 
+// Definición de pines para los pulsadores
+#define BUTTON_START 2  // Pin para iniciar lectura
+#define BUTTON_STOP 3   // Pin para detener lectura
+
 int sensorValue = 0; // Variable para almacenar el valor
+bool lecturaHabilitada = false;  // Estado de la lectura
 SemaphoreHandle_t xMutex;  // Mutex para proteger la variable compartida
 
 // Task para lectura análoga y para escribir en el serial
 void TaskAnalogRead( void *pvParameters );
 void TaskSerialWrite(void *pvParameters);
+
+void iniciarLectura();
+void detenerLectura();
 
 void setup(){
   Serial.begin(9600);
@@ -15,6 +23,14 @@ void setup(){
   //while(!Serial){
     ; // wait serial to connect
   //}
+
+  // Configurar pines de los pulsadores como entrada 
+  pinMode(BUTTON_START, INPUT);
+  pinMode(BUTTON_STOP, INPUT);
+
+  // Configurar interrupciones para los pulsadores
+  attachInterrupt(digitalPinToInterrupt(BUTTON_START), iniciarLectura, RISING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), detenerLectura, RISING);
 
   // Crear el mutex
   xMutex = xSemaphoreCreateMutex();
@@ -42,22 +58,22 @@ void setup(){
 
 void loop(){}
 
-// **Tarea que lee el sensor constantemente**
-void TaskAnalogRead(void *pvParameters){
+// **Tarea que lee el sensor cuando está habilitada**
+void TaskAnalogRead(void *pvParameters) {
   (void) pvParameters;
 
-  for(;;){
-    
-    int tempValue = analogRead(A3); //Leer el sensor
+  for (;;) {
+    if (lecturaHabilitada) {  // Solo lee si está habilitado
+      int tempValue = analogRead(A3);
 
-    // Proteger la variable compartida con el mutex
-    if(xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE){
-      sensorValue = tempValue; //Guardo valor leido
-      xSemaphoreGive(xMutex); //Liberar MUtex
+      // Proteger la variable compartida con el mutex
+      if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        sensorValue = tempValue;
+        xSemaphoreGive(xMutex);
+      }
     }
-
-    vTaskDelay(pdMS_TO_TICKS(15));  // Esperar 15 ms entre lecturas
     
+    vTaskDelay(pdMS_TO_TICKS(15));  // Esperar 15 ms entre lecturas
   }
 }
 
@@ -66,16 +82,27 @@ void TaskSerialWrite(void *pvParameters) {
   (void) pvParameters;
 
   for (;;) {
-    int valueToSend;
+    if (lecturaHabilitada) {  // Solo envía datos si está habilitado
+      int valueToSend;
 
-    // Acceder a la variable compartida de forma segura
-    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
-      valueToSend = sensorValue;
-      xSemaphoreGive(xMutex);
+      // Acceder a la variable compartida de forma segura
+      if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        valueToSend = sensorValue;
+        xSemaphoreGive(xMutex);
+      }
+
+      Serial.println(valueToSend);
     }
-
-    Serial.println(valueToSend);  // Enviar el dato por Serial
-
-    vTaskDelay(pdMS_TO_TICKS(3000));  // Esperar 3 segundos antes de la siguiente transmisión
+    
+    vTaskDelay(pdMS_TO_TICKS(3000));  // Esperar 3 segundos antes del siguiente envío
   }
+}
+// **Interrupción para iniciar la lectura**
+void iniciarLectura() {
+  lecturaHabilitada = true;
+}
+
+// **Interrupción para detener la lectura**
+void detenerLectura() {
+  lecturaHabilitada = false;
 }
