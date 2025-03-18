@@ -10,15 +10,23 @@ int sensorValue = 0; // Variable para almacenar el valor
 bool lecturaHabilitada = false;  // Estado de la lectura
 SemaphoreHandle_t xMutex;  // Mutex para proteger la variable compartida
 
-// Task para lectura análoga y para escribir en el serial
+// Task para lectura análoga 
 void TaskAnalogRead( void *pvParameters );
+// Task para escribir en el serial
 void TaskSerialWrite(void *pvParameters);
+//Task para hacer parpadear leds
+void TaskBlinkLed11(void *pvParameters);
+
+const int led11 = 11;
 
 void iniciarLectura();
 void detenerLectura();
 
 void setup(){
   Serial.begin(9600);
+
+  //setear led 11 como salida
+  pinMode(led11,OUTPUT);
 
   //while(!Serial){
     ; // wait serial to connect
@@ -52,6 +60,12 @@ void setup(){
   xTaskCreate(
     TaskSerialWrite, "SerialWrite",
     128, NULL, 2, NULL
+  );
+
+  //Crear la tarea para parpedeo de leds
+  xTaskCreate(
+    TaskBlinkLed11,"BlinkLed",
+    128,NULL,2,NULL
   );
 
 }
@@ -97,6 +111,26 @@ void TaskSerialWrite(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(3000));  // Esperar 3 segundos antes del siguiente envío
   }
 }
+
+// **Tarea que hace parpedear el led 11**
+void TaskBlinkLed11(void *pvParameters){
+  (void) pvParameters;
+
+  for(;;){
+    if(lecturaHabilitada){
+      digitalWrite(led11, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      digitalWrite(led11, LOW);
+      vTaskDelay(pdMS_TO_TICKS(1000));  // Delay de 1 segundo
+    } else {
+      digitalWrite(led11, LOW);  // si la lectura está apagada, apagr el led
+      vTaskDelay(pdMS_TO_TICKS(100));
+    }
+  }
+}
+
+
+
 // **Interrupción para iniciar la lectura**
 void iniciarLectura() {
   lecturaHabilitada = true;
