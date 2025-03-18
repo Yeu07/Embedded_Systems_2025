@@ -16,8 +16,11 @@ void TaskAnalogRead( void *pvParameters );
 void TaskSerialWrite(void *pvParameters);
 //Task para hacer parpadear leds
 void TaskBlinkLed11(void *pvParameters);
+//Task para alarma
+void TaskStartAlarm(void *pvParameters);
 
 const int led11 = 11;
+const int led12 = 12;
 
 void iniciarLectura();
 void detenerLectura();
@@ -25,8 +28,9 @@ void detenerLectura();
 void setup(){
   Serial.begin(9600);
 
-  //setear led 11 como salida
+  //setear led 11 y 12 como salida
   pinMode(led11,OUTPUT);
+  pinMode(led12,OUTPUT);
 
   //while(!Serial){
     ; // wait serial to connect
@@ -65,6 +69,12 @@ void setup(){
   //Crear la tarea para parpedeo de leds
   xTaskCreate(
     TaskBlinkLed11,"BlinkLed",
+    128,NULL,2,NULL
+  );
+
+  //Crear tarea para encender alarma cuando la intesidad sea mayor a 800
+  xTaskCreate(
+    TaskStartAlarm,"StartAlarm",
     128,NULL,2,NULL
   );
 
@@ -128,6 +138,48 @@ void TaskBlinkLed11(void *pvParameters){
     }
   }
 }
+
+// **Tarea para encender alarma si la intensidad luminosa es mayor a 800**
+void TaskStartAlarm(void *pvParameters) {
+  (void) pvParameters;
+
+  static bool alarmaActiva = false;  // Se mantiene activa hasta que la lectura se detenga
+
+  for (;;) {
+    if (lecturaHabilitada) {
+      int actualIntensity;
+
+      // Acceder a la variable compartida de forma segura
+      if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        actualIntensity = sensorValue;
+        xSemaphoreGive(xMutex);
+      }
+
+      // Si la intensidad supera 800, activar la alarma
+      if (actualIntensity > 800) {
+        alarmaActiva = true;
+      }
+
+      // Si la alarma está activa, hacer parpadear el LED 12
+      if (alarmaActiva) {
+        digitalWrite(led12, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        digitalWrite(led12, LOW);
+        vTaskDelay(pdMS_TO_TICKS(100));
+      } else {
+        vTaskDelay(pdMS_TO_TICKS(50));  // Evitar consumir toda la CPU
+      }
+
+    } else {
+      // Si se deshabilita la lectura, apagar la alarma
+      alarmaActiva = false;
+      digitalWrite(led12, LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+    }
+  }
+}
+
+
 
 
 
