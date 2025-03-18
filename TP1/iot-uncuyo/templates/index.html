@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Arduino UNO</title>
+    <link rel="stylesheet" href="../static/css/styles.css">
+</head>
+<body>
+    <h1>Control de Arduino UNO</h1>
+    
+    <section>
+        <h2>Control de Brillo</h2>
+        <label for="led9">LED 9:</label>
+        <input type="range" id="led9" min="0" max="255" onchange="updateLED(9, this.value)">
+        <p>Valor: <span id="led9Value">0</span></p>
+        
+        <label for="led10">LED 10:</label>
+        <input type="range" id="led10" min="0" max="255" onchange="updateLED(10, this.value)">
+        <p>Valor: <span id="led10Value">0</span></p>
+        
+        <label for="led11">LED 11:</label>
+        <input type="range" id="led11" min="0" max="255" onchange="updateLED(11, this.value)">
+        <p>Valor: <span id="led11Value">0</span></p>
+    </section>
+    
+    <section>
+        <h2>Control de Encendido</h2>
+        <button id="togglePin13" onclick="togglePin13()">ON/OFF Pin 13</button>
+        <p>Estado: <span id="pin13Status">Apagado</span></p>
+    </section>
+    
+    <section>
+        <h2>Intensidad Luminosa</h2>
+        <p id="ldrValue">LDR: --</p>
+    </section>
+    
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
+</body>
+</html>
