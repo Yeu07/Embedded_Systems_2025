@@ -3,15 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitor de LDR</title>
+    <title>Reloj Unix con Arduino</title>
     <link rel="stylesheet" href="../static/css/styles.css">
 </head>
 <body>
-    <h1>Monitor de Intensidad Luminosa</h1>
-    <p>Valor del LDR: <span id="ldrValue">--</span></p>
-    <p>Estado de la alarma: <span id="alarmStatus">Desactivada</span></p>
-    <button id="toggleButton">Activar Lectura</button>
-    
+    <div class="container">
+        <h1>Reloj Unix con Arduino</h1>
+        <button id="update-time">Actualizar hora desde NTP</button>
+        <button id="retrieve-events">Mostrar eventos almacenados</button>
+        <button id="clear-eeprom">Borrar EEPROM</button>
+        <div id="events"></div>
+    </div>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>

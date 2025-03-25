@@ -1,44 +1,48 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, request, jsonify, render_template
 import serial
-import threading
+import ntplib
+import time
+
 app = Flask(__name__)
 
-# Configurar la conexión con el Arduino (ajustar el puerto según sea necesario)
-arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=1)  # Cambia 'COM3' por el puerto correcto en tu sistema
+# Configuración del puerto serial
+SERIAL_PORT = '/dev/ttyACM1'  # Ajustar según el sistema
+BAUD_RATE = 9600
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
 
-ldr_value = 0
-lectura_activada = False
-alarma_activa = False
-
-def read_arduino():
-    global ldr_value, alarma_activa
-    while True:
-        if lectura_activada:
-            try:
-                arduino.write(b'READ\n')  # Comando para solicitar datos al Arduino
-                data = arduino.readline().decode().strip()
-                if data.isdigit():
-                    ldr_value = int(data)
-                    alarma_activa = ldr_value > 800
-            except Exception as e:
-                print("Error leyendo datos:", e)
-
-# Hilo para leer datos del Arduino continuamente
-threading.Thread(target=read_arduino, daemon=True).start()
-
-@app.route('/')
+def get_ntp_time():
+    try:
+        client = ntplib.NTPClient()
+        response = client.request('pool.ntp.org')
+        return int(response.tx_time)
+    except Exception as e:
+        print(f"Error obteniendo la hora NTP: {e}")
+        return int(time.time())
+    
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")  # Asegúrate de que "index.html" está en la carpeta "templates"
 
-@app.route('/ldr')
-def get_ldr():
-    return jsonify({"ldr": ldr_value, "alarma": alarma_activa, "lectura": lectura_activada})
+@app.route('/update_time', methods=['POST'])
+def update_time():
+    unix_time = get_ntp_time()
+    ser.write(f"{unix_time}\n".encode())
+    return jsonify({"unix_time": unix_time})
 
-@app.route('/toggle_lectura', methods=['POST'])
-def toggle_lectura():
-    global lectura_activada
-    lectura_activada = not lectura_activada
-    return jsonify({"lectura": lectura_activada})
+@app.route('/retrieve_events', methods=['GET'])
+def retrieve_events():
+    ser.write(b"retrieve\n")
+    time.sleep(1)
+    events = []
+    while ser.in_waiting:
+        line = ser.readline().decode().strip()
+        events.append(line)
+    return jsonify({"events": events})
+
+@app.route('/clear_eeprom', methods=['POST'])
+def clear_eeprom():
+    ser.write(b"clear\n")
+    return jsonify({"message": "EEPROM cleared"})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

@@ -1,33 +1,26 @@
-document.addEventListener("DOMContentLoaded", function () {
-    const ldrValueSpan = document.getElementById("ldrValue");
-    const alarmStatusSpan = document.getElementById("alarmStatus");
-    const toggleButton = document.getElementById("toggleButton");
-    
-    let lecturaActiva = false;
+document.getElementById("update-time").addEventListener("click", () => {
+    fetch("/update_time", { method: "POST" })
+        .then(response => response.json())
+        .then(data => alert(`Hora actualizada: ${data.unix_time}`))
+        .catch(error => console.error("Error actualizando hora:", error));
+});
 
-    function actualizarDatos() {
-        fetch("/ldr")
-            .then(response => response.json())
-            .then(data => {
-                ldrValueSpan.textContent = data.ldr;
-                alarmStatusSpan.textContent = data.alarma ? "Activada" : "Desactivada";
-            })
-            .catch(error => console.error("Error obteniendo datos:", error));
-    }
-
-    toggleButton.addEventListener("click", function () {
-        lecturaActiva = !lecturaActiva;
-        fetch("/toggle_lectura", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ estado: lecturaActiva })
-        })
+document.getElementById("retrieve-events").addEventListener("click", () => {
+    fetch("/retrieve_events")
         .then(response => response.json())
         .then(data => {
-            toggleButton.textContent = data.lectura ? "Desactivar Lectura" : "Activar Lectura";
+            const eventsDiv = document.getElementById("events");
+            eventsDiv.innerHTML = "<h3>Eventos almacenados:</h3>";
+            data.events.forEach(event => {
+                eventsDiv.innerHTML += `<p>${event}</p>`;
+            });
         })
-        .catch(error => console.error("Error cambiando estado:", error));
-    });
+        .catch(error => console.error("Error obteniendo eventos:", error));
+});
 
-    setInterval(actualizarDatos, 3000); // Actualiza cada 3 segundos
+document.getElementById("clear-eeprom").addEventListener("click", () => {
+    fetch("/clear_eeprom", { method: "POST" })
+        .then(response => response.json())
+        .then(data => alert(data.message))
+        .catch(error => console.error("Error borrando EEPROM:", error));
 });
