@@ -235,6 +235,10 @@ void TaskSerialCommand(void *pvParameters){
 }
 ```
 
+Vista previa:
+![alt text](./image.png)
+
+
 
 
 
