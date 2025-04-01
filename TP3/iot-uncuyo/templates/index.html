@@ -1,19 +1,24 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reloj Unix con Arduino</title>
-    <link rel="stylesheet" href="../static/css/styles.css">
+    <title>Control de Arduino</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
+
 <body>
-    <div class="container">
-        <h1>Reloj Unix con Arduino</h1>
-        <button id="update-time">Actualizar hora desde NTP</button>
-        <button id="retrieve-events">Mostrar eventos almacenados</button>
-        <button id="clear-eeprom">Borrar EEPROM</button>
-        <div id="events"></div>
-    </div>
+    <h1>Control de Arduino</h1>
+
+    <p id="serialTime">Hora actual: --:--:--</p>
+
+    <button id="updateTime">Actualizar hora desde servidor NTP</button>
+    <button id="getEvents">Obtener eventos de EEPROM</button>
+    <button id="clearEEPROM">Borrar EEPROM</button>
+
+    <div id="message"></div>
+    <div id="events"></div>
+
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
+
 </html>

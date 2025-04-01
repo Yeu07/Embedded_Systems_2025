@@ -1,26 +1,43 @@
-document.getElementById("update-time").addEventListener("click", () => {
-    fetch("/update_time", { method: "POST" })
-        .then(response => response.json())
-        .then(data => alert(`Hora actualizada: ${data.unix_time}`))
-        .catch(error => console.error("Error actualizando hora:", error));
-});
-
-document.getElementById("retrieve-events").addEventListener("click", () => {
-    fetch("/retrieve_events")
+document.getElementById('updateTime').addEventListener('click', () => {
+    fetch('/update_time', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
-            const eventsDiv = document.getElementById("events");
-            eventsDiv.innerHTML = "<h3>Eventos almacenados:</h3>";
-            data.events.forEach(event => {
-                eventsDiv.innerHTML += `<p>${event}</p>`;
-            });
-        })
-        .catch(error => console.error("Error obteniendo eventos:", error));
+            document.getElementById('message').textContent = data.message || data.error;
+        });
 });
 
-document.getElementById("clear-eeprom").addEventListener("click", () => {
-    fetch("/clear_eeprom", { method: "POST" })
+document.getElementById('getEvents').addEventListener('click', () => {
+    fetch('/get_events')
         .then(response => response.json())
-        .then(data => alert(data.message))
-        .catch(error => console.error("Error borrando EEPROM:", error));
+        .then(data => {
+            let eventsDiv = document.getElementById('events');
+            eventsDiv.innerHTML = '<h2>Eventos:</h2>';
+            data.forEach(event => {
+                eventsDiv.innerHTML += `<p>Pin: ${event.pin}, Tiempo: ${event.readable_time}</p>`;
+            });
+        });
 });
+
+document.getElementById('clearEEPROM').addEventListener('click', () => {
+    fetch('/clear_eeprom', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('message').textContent = data.message;
+        });
+});
+
+function fetchSerialTime() {
+    fetch('/get_serial_time')
+        .then(response => response.json())
+        .then(data => {
+            if (data.time) {
+                document.getElementById('serialTime').textContent = `Hora actual: ${data.time}`;
+            } else {
+                console.error('Error obteniendo la hora:', data.error);
+            }
+        })
+        .catch(error => console.error('Error en la solicitud:', error));
+}
+
+// Llamar a la función cada segundo
+setInterval(fetchSerialTime, 1000);
