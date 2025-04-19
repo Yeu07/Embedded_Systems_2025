@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Juego Simon - Arduino</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Simon Game en Arduino</h1>
+
+        <div class="start_control">
+            <button onclick="sendCommand('Start')">Iniciar Juego</button>
+        </div>
+
+        <div class="controls">
+            <button onclick="sendCommand('7')">LED 7</button>
+            <button onclick="sendCommand('9')">LED 9</button>
+            <button onclick="sendCommand('11')">LED 11</button>
+            <button onclick="sendCommand('13')">LED 13</button>
+        </div>
+        
+        <div class="game-status">
+            <h2>Estado del Juego</h2>
+            <div class="status-grid">
+                <p><strong>Estado:</strong> <span id="status-state">...</span></p>
+                <p><strong>Nivel:</strong> <span id="status-level">...</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>
