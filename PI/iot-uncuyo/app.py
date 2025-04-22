@@ -1,12 +1,12 @@
 from flask import Flask, request, jsonify, render_template
 import serial
 import threading
-import time  # <--- nuevo
+import time
 
 app = Flask(__name__)
 
 arduino = serial.Serial(port='/dev/ttyACM0', baudrate=9600, timeout=1)
-time.sleep(2)  # <--- espera a que Arduino esté listo
+time.sleep(2)
 
 serial_lock = threading.Lock()
 serial_log = []
@@ -14,13 +14,13 @@ serial_log = []
 def read_from_serial():
     while True:
         try:
-            line = arduino.readline().decode().strip() # Elimina 'errors='ignore'
+            line = arduino.readline().decode().strip()
             if line:
                 with serial_lock:
                     serial_log.append(line)
                     if len(serial_log) > 50:
                         serial_log.pop(0)
-                    # Intenta parsear la línea si tiene el formato esperado
+                    
                     if line.startswith("STATUS,"):
                         parts = line.split(',')
                         if len(parts) == 4:
@@ -52,5 +52,5 @@ def get_status():
         return jsonify({'log': serial_log[-10:]})
 
 if __name__ == '__main__':
-    threading.Thread(target=read_from_serial, daemon=True).start()
+    # threading.Thread(target=read_from_serial, daemon=True).start() # Descomentar luego de ejecutar python3 app.py
     app.run(debug=True, host='0.0.0.0', port=5000)
