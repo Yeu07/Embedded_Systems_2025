@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contador de Personas</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Contador de Personas</h1>
+        
+        <div class="counter-display">
+            <span id="people-count">0</span>
+        </div>
+        
+        <div class="detection-indicator" id="detection-indicator"></div>
+        
+        <div class="alarm-status" id="alarm-status">
+            Estado de la alarma: <span id="alarm-text">INACTIVA</span>
+        </div>
+        
+        <button id="reset-btn" class="reset-button">Reiniciar Contador</button>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
