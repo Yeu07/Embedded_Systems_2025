@@ -163,7 +163,7 @@ void clearEEPROM() {
 
 
 Vista previa:
-![alt text]()
+![alt text](image.png)
 
 
 
