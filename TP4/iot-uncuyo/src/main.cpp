@@ -1,192 +1,340 @@
-#include <EEPROM.h>
+#include <EEPROM.h> // Asegúrate de incluir la librería
 #include <Arduino.h>
 
-// Pines del sensor HCSR04
-const int trigPin = 5;
-const int echoPin = 4;
+const int TRIG_PIN = 5;
+const int ECHO_PIN = 4;
+const int LED_PINS[] = {6, 7, 8, 9, 10, 11, 12, 13}; // 8 LEDs
+const int NUM_LEDS = sizeof(LED_PINS) / sizeof(LED_PINS[0]);
 
-// Pines de los LEDs 
-const int ledPin6 = 6;
-const int ledPin7 = 7;
-const int ledPin8 = 8;
-const int ledPin9 = 9;
-const int ledPin10 = 10;
-const int ledPin11 = 11;
-const int ledPin12 = 12;
-const int ledPin13 = 13;
+const unsigned long MIN_PRESENCE_TIME_MS = 250;     // 0.25 segundos mínimo delante del sensor
+const unsigned long ALARM_STOPPED_THRESHOLD_MS = 2000; // 2 segundos detenido para activar alarma
+const unsigned long ALARM_BLINK_INTERVAL_MS = 500;  // Intervalo parpadeo alarma
+const int SENSOR_MIN_DISTANCE_CM = 5;               // Distancia mínima detectable confiable
+const int SENSOR_MAX_DISTANCE_CM = 200;             // Distancia máxima detectable confiable (ajusta a tu sensor HC-SR04)
+const int DETECTION_THRESHOLD_CM = 50;              // Umbral para considerar presencia (objeto más cerca que esto)
+const int EXIT_HYSTERESIS_CM = 6;                  // Margen para confirmar salida (evita rebotes) - Debe ser > DETECTION_THRESHOLD_CM
+const int MOVEMENT_THRESHOLD_CM = 5;                // Cambio mínimo de distancia para considerar movimiento
+const int MAX_READING_CHANGE_CM = 75;               // Cambio máximo respecto a la última lectura válida para filtrar picos
 
-// Variables para el sensor
-long duration;
-int distance;
-int lastDistance = 0;
-int stableDistance = 0;
+const int FILTER_READINGS_COUNT = 5;                // Número de lecturas para el promedio móvil
+int sensorReadings[FILTER_READINGS_COUNT];
+int currentReadingIndex = 0;
+long readingsSum = 0;
+int lastStableFilteredDistance = SENSOR_MAX_DISTANCE_CM; // Empezar asumiendo que no hay nada
 
-// Variables para el conteo
-int peopleCount = 0;
-bool personDetected = false;
-unsigned long detectionStartTime = 0;
-unsigned long lastMovementTime = 0;
-const unsigned long minDetectionTime = 500; // 0.5 segundos
-const unsigned long alarmThreshold = 3000; // 3 segundos para alarma
+// --- EEPROM ---
+const int EEPROM_ADDR_COUNT = 0;                    // Dirección para guardar el contador (ocupa 4 bytes para unsigned long)
+const int EEPROM_ADDR_MAGIC = sizeof(unsigned long); 
+const uint16_t EEPROM_MAGIC_VALUE = 0xABCD;       
 
-// Umbrales de distancia
-const int minDistance = 10; // 10 cm (distancia mínima para detectar)
-const int maxDistance = 200; // 200 cm (distancia máxima para detectar)
-const int distanceThreshold = 30; // 30 cm (umbral para considerar que hay alguien)
+// --- Variables de Estado ---
+unsigned long peopleCount = 0;
+bool isPersonPresent = false;           // Estado: ¿Hay alguien detectado actualmente?
+bool isPersonConfirmed = false;         // Estado: ¿La persona ha estado el tiempo mínimo?
+unsigned long timeEnteredZone = 0;      // Timestamp: ¿Cuándo entró en la zona?
+unsigned long timeLastMovement = 0;     // Timestamp: ¿Cuándo fue el último movimiento detectado?
+bool isAlarmActive = false;
+unsigned long timeAlarmLastToggle = 0;
 
-// Variables para filtrado
-const int numReadings = 5;
-int readings[numReadings];
-int readIndex = 0;
-int total = 0;
-int average = 0;
+// --- Declaraciones de Funciones ---
+int readAndFilterDistance();
+void updateAlarmState();
+void setAllLeds(bool state);
+void loadCountFromEEPROM();
+void saveCountToEEPROMIfNeeded(bool forceSave = false);
+void handleSerialCommands();
 
-int getFilteredDistance() {
-  // Limpiar el trigger
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  
-  // Activar el trigger por 10 microsegundos
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  
-  // Leer el echo y calcular distancia en cm
-  duration = pulseIn(echoPin, HIGH);
-  int rawDistance = duration * 0.034 / 2;
-  
-  // Filtrar lecturas erróneas (fuera de rango)
-  if (rawDistance < minDistance || rawDistance > maxDistance) {
-    rawDistance = lastDistance; // Mantener última distancia válida
+// Variable global para rastrear si el contador cambió y necesita guardarse
+bool countChanged = false;
+
+void setup() {
+  Serial.begin(9600);
+
+  Serial.println("Iniciando Contador de Personas v1.1...");
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  for (int i = 0; i < NUM_LEDS; i++) {
+    pinMode(LED_PINS[i], OUTPUT);
+    digitalWrite(LED_PINS[i], LOW); 
   }
-  
-  // Filtro de promedio móvil para suavizar lecturas
-  total = total - readings[readIndex];
-  readings[readIndex] = rawDistance;
-  total = total + readings[readIndex];
-  readIndex = (readIndex + 1) % numReadings;
-  
-  int filteredDistance = total / numReadings;
-  lastDistance = filteredDistance;
-  
+
+  // Inicializar filtro
+  for (int i = 0; i < FILTER_READINGS_COUNT; i++) {
+    sensorReadings[i] = SENSOR_MAX_DISTANCE_CM; 
+  }
+  readingsSum = (long)SENSOR_MAX_DISTANCE_CM * FILTER_READINGS_COUNT;
+  lastStableFilteredDistance = SENSOR_MAX_DISTANCE_CM;
+
+  loadCountFromEEPROM(); 
+  Serial.print("Contador inicial cargado: ");
+  Serial.println(peopleCount);
+  // Enviar estado inicial a Flask
+  Serial.print("peopleCount:");
+  Serial.println(peopleCount);
+  Serial.println(isAlarmActive ? "ALARM_ACTIVE" : "ALARM_OFF");
+
+
+  Serial.println("Probando LEDs...");
+  for (int i = 0; i < NUM_LEDS; i++) {
+    digitalWrite(LED_PINS[i], HIGH);
+    delay(50);
+  }
+    for (int i = 0; i < NUM_LEDS; i++) {
+    digitalWrite(LED_PINS[i], LOW);
+    delay(50);
+  }
+  Serial.println("Sistema listo.");
+}
+
+void loop() {
+  int currentDistance = readAndFilterDistance();
+  unsigned long currentTime = millis();
+
+
+  if (currentDistance < DETECTION_THRESHOLD_CM) {
+    // --- DENTRO de la zona de detección ---
+    if (!isPersonPresent) {
+      // -> Transición: Nadie -> Alguien Entra
+      isPersonPresent = true;
+      isPersonConfirmed = false; 
+      timeEnteredZone = currentTime;
+      timeLastMovement = currentTime; 
+      Serial.println("INFO: Objeto detectado en zona.");
+      // No contar ni activar alarma aún, esperar confirmación
+    } else {
+      // -> Estado: Alguien ya está presente
+      // Verificar si se movió recientemente
+      // Usamos la distancia filtrada actual vs la última estable *antes* de actualizarla
+      if (abs(currentDistance - lastStableFilteredDistance) > MOVEMENT_THRESHOLD_CM) {
+        timeLastMovement = currentTime; // Actualizar tiempo del último movimiento
+        if (isAlarmActive) {
+           Serial.println("INFO: Movimiento detectado, desactivando alarma.");
+           isAlarmActive = false; // Resetear alarma si se mueve
+           setAllLeds(LOW);       // Apagar LEDs inmediatamente
+           Serial.println("ALARM_OFF"); // Notificar a Flask
+        }
+      }
+
+      // Verificar si ha estado el tiempo mínimo para confirmarlo como persona
+      if (!isPersonConfirmed && (currentTime - timeEnteredZone >= MIN_PRESENCE_TIME_MS)) {
+        isPersonConfirmed = true;
+        Serial.println("INFO: Presencia confirmada (tiempo mínimo cumplido).");
+        Serial.println("PERSON_CONFIRMED_EVENT"); // Notificar a Flask para indicador visual
+      }
+
+      // Verificar si está detenido demasiado tiempo (solo si ya está confirmado)
+      if (isPersonConfirmed && !isAlarmActive && (currentTime - timeLastMovement >= ALARM_STOPPED_THRESHOLD_MS)) {
+         Serial.println("ALERTA: Persona detenida demasiado tiempo!");
+         isAlarmActive = true; // Activar alarma
+         timeAlarmLastToggle = currentTime; // Iniciar parpadeo inmediatamente
+      }
+    }
+    // Actualizar la última distancia estable *después* de las comprobaciones de movimiento
+    lastStableFilteredDistance = currentDistance;
+
+  } else if (currentDistance >= DETECTION_THRESHOLD_CM + EXIT_HYSTERESIS_CM) {
+    // --- FUERA de la zona de detección ---
+    if (isPersonPresent) {
+      // -> Transición: Alguien Sale
+      Serial.println("INFO: Objeto saliendo de la zona.");
+      if (isPersonConfirmed) {
+        // La persona estuvo el tiempo mínimo, ¡CONTAR!
+        peopleCount++;
+        countChanged = true; // Marcar para guardar en EEPROM
+        Serial.print("EVENTO: Persona contada. Total: ");
+        Serial.println(peopleCount);
+        // Enviar el nuevo contador a Flask
+        Serial.print("peopleCount:");
+        Serial.println(peopleCount);
+        Serial.println("DETECTION_EVENT"); 
+      } else {
+         Serial.println("INFO: Objeto salió antes de tiempo mínimo, no contado (movimiento rápido?).");
+      }
+
+      // Resetear estados al salir de la zona
+      isPersonPresent = false;
+      isPersonConfirmed = false;
+      lastStableFilteredDistance = SENSOR_MAX_DISTANCE_CM;
+
+      if (isAlarmActive) {
+          Serial.println("INFO: Alarma desactivada al salir persona.");
+          isAlarmActive = false;
+          setAllLeds(LOW); // Apagar LEDs
+          Serial.println("ALARM_OFF"); // Notificar a Flask
+      }
+    }
+    // Si no había nadie presente (isPersonPresent ya era false), no hacemos nada.
+  }
+
+  // --- Tareas Periódicas ---
+  updateAlarmState();         // Manejar parpadeo de LEDs si la alarma está activa y notificar
+  handleSerialCommands();     // Procesar comandos entrantes (Reset, Status)
+  saveCountToEEPROMIfNeeded(); // Guardar contador en EEPROM si cambió (con lógica anti-desgaste)
+
+  delay(50); // Pequeña pausa para estabilidad y reducir carga CPU
+}
+
+
+// readAndFilterDistance: Lee el sensor y aplica filtros
+int readAndFilterDistance() {
+  long durationMicros;
+  int rawDistanceCm;
+
+  // Trigger
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  // Lectura con Timeout 
+  // Timeout un poco mayor que el tiempo de ida y vuelta para la distancia máxima
+  long timeoutMicros = (long)(SENSOR_MAX_DISTANCE_CM + 20) * 59; // Añadir margen y usar ~59 us/cm
+  durationMicros = pulseIn(ECHO_PIN, HIGH, timeoutMicros);
+
+  if (durationMicros == 0) {
+    // Timeout o eco perdido. Puede ser que no haya objeto o esté fuera de rango.
+    // Devolver un valor grande es lo más seguro para la lógica de "salida".
+    return SENSOR_MAX_DISTANCE_CM + 10; // Valor claramente fuera de rango de detección
+  }
+
+  rawDistanceCm = durationMicros / 58.2; // Cálculo de distancia (usar 58.2 o similar)
+
+  // 1. Filtro de Rango Básico
+  if (rawDistanceCm < SENSOR_MIN_DISTANCE_CM || rawDistanceCm > SENSOR_MAX_DISTANCE_CM) {
+    // Lectura fuera del rango operativo fiable del sensor.
+    // Devolver la última lectura filtrada ESTABLE podría mantener un estado incorrecto
+    // si el objeto realmente se fue o si hay un error persistente.
+    return SENSOR_MAX_DISTANCE_CM + 5; // Opción más segura: devolver valor fuera de rango
+  }
+
+  // 2. Filtro de Cambio Brusco (Opcional, ayuda con picos de ruido)
+  // Compara la lectura RAW actual con la última lectura filtrada *estable*
+  // Solo aplicar si ya hay alguien presente para evitar filtrar la entrada inicial
+  if (isPersonPresent && abs(rawDistanceCm - lastStableFilteredDistance) > MAX_READING_CHANGE_CM) {
+     return lastStableFilteredDistance; // Ignorar este pico, devolver la última estable filtrada
+  }
+
+  // 3. Filtro de Promedio Móvil (Suaviza la lectura)
+  readingsSum -= sensorReadings[currentReadingIndex];
+  sensorReadings[currentReadingIndex] = rawDistanceCm; // Añadir la lectura RAW (o filtrada por rango/pico)
+  readingsSum += rawDistanceCm;
+  currentReadingIndex = (currentReadingIndex + 1) % FILTER_READINGS_COUNT;
+
+  int filteredDistance = readingsSum / FILTER_READINGS_COUNT;
+
+  // Devuelve la distancia promediada
   return filteredDistance;
 }
 
-void triggerAlarm() {
-  // Encender todos los LEDs
-  digitalWrite(ledPin6, HIGH);
-  digitalWrite(ledPin7, HIGH);
-  digitalWrite(ledPin8, HIGH);
-  digitalWrite(ledPin9, HIGH);
-  digitalWrite(ledPin10, HIGH);
-  digitalWrite(ledPin11, HIGH);
-  digitalWrite(ledPin12, HIGH);
-  digitalWrite(ledPin13, HIGH);
-  
-  // Enviar señal de alarma a la página web
-  Serial.println("ALARM_EVENT");
-}
-
-void resetAlarm() {
-  // Apagar todos los LEDs
-  digitalWrite(ledPin6, LOW);
-  digitalWrite(ledPin7, LOW);
-  digitalWrite(ledPin8, LOW);
-  digitalWrite(ledPin9, LOW);
-  digitalWrite(ledPin10, LOW);
-  digitalWrite(ledPin11, LOW);
-  digitalWrite(ledPin12, LOW);
-  digitalWrite(ledPin13, LOW);
-}
-
-void setup() {
-  // Inicializar pines
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
-  pinMode(ledPin6, OUTPUT);
-  pinMode(ledPin7, OUTPUT);
-  pinMode(ledPin8, OUTPUT);
-  pinMode(ledPin9, OUTPUT);
-  pinMode(ledPin10, OUTPUT);
-  pinMode(ledPin11, OUTPUT);
-  pinMode(ledPin12, OUTPUT);
-  pinMode(ledPin13, OUTPUT);
-  
-  // Inicializar comunicación serial
-  Serial.begin(9600);
-  
-  // Inicializar filtro de promedio móvil
-  for (int i = 0; i < numReadings; i++) {
-    readings[i] = 0;
+// updateAlarmState: Controla el parpadeo de los LEDs y notifica estado ALARM_ACTIVE
+void updateAlarmState() {
+  if (!isAlarmActive) {
+    // No hacer nada si la alarma no está activa.
+    // Los LEDs se apagan cuando la alarma se desactiva explícitamente.
+    return;
   }
-  
-  // Cargar conteo desde EEPROM
-  peopleCount = EEPROM.read(0);
-  if (peopleCount == 255) { // Valor inicial de EEPROM
-    peopleCount = 0;
+
+  unsigned long currentTime = millis();
+
+  // Enviar estado de alarma periódicamente mientras esté activa para asegurar que Flask lo sepa
+
+  // Lógica de parpadeo
+  if (currentTime - timeAlarmLastToggle >= ALARM_BLINK_INTERVAL_MS) {
+    timeAlarmLastToggle = currentTime;
+    bool currentLedState = digitalRead(LED_PINS[0]); // Leer estado de un LED para invertir
+    setAllLeds(!currentLedState);
+    // Notificar a Flask que la alarma sigue activa (junto con el parpadeo)
+    Serial.println("ALARM_ACTIVE");
   }
-  
-  // Apagar todos los LEDs al inicio
-  resetAlarm();
 }
 
+// setAllLeds: Enciende o apaga todos los LEDs configurados
+void setAllLeds(bool state) {
+  byte ledState = state ? HIGH : LOW;
+  for (int i = 0; i < NUM_LEDS; i++) {
+    digitalWrite(LED_PINS[i], ledState);
+  }
+}
 
+// loadCountFromEEPROM: Carga el contador verificando un valor mágico
+void loadCountFromEEPROM() {
+  uint16_t magic;
+  EEPROM.get(EEPROM_ADDR_MAGIC, magic);
 
-void loop() {
-  // Leer distancia del sensor
-  int currentDistance = getFilteredDistance();
-  
-  // Verificar si hay una persona en el rango de detección
-  if (currentDistance < distanceThreshold && currentDistance > minDistance) {
-    if (!personDetected) {
-      // Primera detección de persona
-      personDetected = true;
-      detectionStartTime = millis();
-      lastMovementTime = millis();
-      stableDistance = currentDistance;
-      Serial.println("Persona detectada");
-    } else {
-      // Persona ya detectada, verificar movimiento
-      if (abs(currentDistance - stableDistance) > 5) { // Hay movimiento
-        lastMovementTime = millis();
-        stableDistance = currentDistance;
-      }
-      
-      // Verificar si la persona se ha detenido demasiado tiempo
-      if (millis() - lastMovementTime > alarmThreshold) {
-        triggerAlarm();
-      } else {
-        resetAlarm();
-      }
-    }
+  if (magic == EEPROM_MAGIC_VALUE) {
+    // El valor mágico coincide, la EEPROM fue inicializada por nosotros
+    EEPROM.get(EEPROM_ADDR_COUNT, peopleCount);
+    Serial.println("INFO: Valor mágico encontrado, cargando contador desde EEPROM.");
   } else {
-    // No hay persona detectada o se fue
-    if (personDetected) {
-      // Verificar si estuvo el tiempo mínimo para contar como persona
-      if (millis() - detectionStartTime >= minDetectionTime) {
-        peopleCount++;
-        EEPROM.write(0, peopleCount); // Guardar en EEPROM
-        Serial.print("Persona contada. Total: ");
-        Serial.println(peopleCount);
-        
-        // Enviar señal a la página web
-        Serial.println("DETECTION_EVENT");
-      }
-      personDetected = false;
-      resetAlarm();
-    }
+    // Primera ejecución o EEPROM corrupta/diferente
+    Serial.println("WARN: Valor mágico no encontrado o incorrecto. Inicializando EEPROM.");
+    peopleCount = 0; // Empezar desde cero
+    EEPROM.put(EEPROM_ADDR_COUNT, peopleCount);
+    EEPROM.put(EEPROM_ADDR_MAGIC, EEPROM_MAGIC_VALUE);
+    Serial.println("INFO: EEPROM inicializada con contador 0 y valor mágico.");
   }
-  
-  // Verificar si hay un comando de reset desde la página web
+}
+
+// saveCountToEEPROMIfNeeded: Guarda el contador si ha cambiado (estrategia anti-desgaste)
+void saveCountToEEPROMIfNeeded(bool forceSave = false) {
+  if (countChanged || forceSave) {
+     unsigned long currentCountInEEPROM;
+     EEPROM.get(EEPROM_ADDR_COUNT, currentCountInEEPROM);
+
+     // Solo escribir si el valor realmente es diferente del que está en EEPROM O si forzamos
+     if (currentCountInEEPROM != peopleCount || forceSave) {
+         Serial.print("INFO: Guardando contador en EEPROM: ");
+         Serial.println(peopleCount);
+         EEPROM.put(EEPROM_ADDR_COUNT, peopleCount);
+         countChanged = false; // Resetear flag después de guardar exitosamente
+     } else {
+         // El valor era el mismo, no se escribió. Resetear flag igualmente.
+         countChanged = false;
+     }
+  }
+}
+
+// handleSerialCommands: Procesa comandos recibidos por el puerto serial
+void handleSerialCommands() {
   if (Serial.available() > 0) {
     String command = Serial.readStringUntil('\n');
+    command.trim(); // Limpiar espacios en blanco y saltos de línea
+    command.toUpperCase(); // Convertir a mayúsculas para insensibilidad
+
     if (command == "RESET") {
+      Serial.println("COMANDO: Reset recibido.");
       peopleCount = 0;
-      EEPROM.write(0, peopleCount);
-      Serial.println("Contador reiniciado");
+      isPersonPresent = false; // Resetear estados también
+      isPersonConfirmed = false;
+      lastStableFilteredDistance = SENSOR_MAX_DISTANCE_CM; // Resetear distancia
+
+      if(isAlarmActive){
+          isAlarmActive = false;
+          setAllLeds(LOW); // Apagar LEDs si la alarma estaba activa
+          Serial.println("ALARM_OFF"); // Notificar a Flask
+      }
+
+      countChanged = true; // Marcar para forzar guardado a 0
+      saveCountToEEPROMIfNeeded(true); // Forzar guardado inmediato del 0 en EEPROM
+
+      Serial.println("INFO: Contador reseteado a 0 y guardado.");
+      // Enviar explícitamente el nuevo contador a Flask
+      Serial.print("peopleCount:");
+      Serial.println(peopleCount);
+
+    } else if (command == "STATUS") {
+         Serial.println("--- ESTADO ACTUAL (Arduino) ---");
+         Serial.print("Contador: "); Serial.println(peopleCount);
+         Serial.print("Persona Presente: "); Serial.println(isPersonPresent ? "SI" : "NO");
+         Serial.print("Persona Confirmada: "); Serial.println(isPersonConfirmed ? "SI" : "NO");
+         Serial.print("Alarma Activa: "); Serial.println(isAlarmActive ? "SI" : "NO");
+         Serial.print("Ultima Distancia Filtrada: "); Serial.print(lastStableFilteredDistance); Serial.println(" cm");
+         Serial.print("Tiempo Entrada Zona (ms): "); Serial.println(isPersonPresent ? millis() - timeEnteredZone : 0);
+         Serial.print("Tiempo Sin Movimiento (ms): "); Serial.println(isPersonPresent ? millis() - timeLastMovement : 0);
+         Serial.println("-----------------------------");
     }
   }
-  
-  delay(100); // Pequeña pausa entre lecturas
 }
-
