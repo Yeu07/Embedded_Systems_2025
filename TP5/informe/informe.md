@@ -7,12 +7,16 @@ Integrantes:
 - Silva, Yeumen
 - Yornet de Rosas, Agustín
 
-## Actividad 1
-> **Enunciado 1.** Realizar una aplicación que realice las siguientes tareas a través de una página web sencilla:
+## Resolución
+Para este Trabajo Práctico, se desarrolló una aplicación que obtiene lecturas de intensidad luminosa utilizando el sensor LDR del Arduino UNO y realiza un gráfico que se muestra sobre una página web. El gráfico muestra los últimos 30 datos obtenidos del Arduino UNO. El eje vertical representa la intensidad luminosa y  el eje horizontal representa la hora UTC-3 (hora de Argentina). El gráfico fue hecho utilizando la herramienta Canvas de JavaScript.
 
->**a.​** Obtenga lecturas de intensidad luminosa utilizando el sensor LDR y realice un gráfico a mostrar en una página web. El gráfico debera mostrar en el eje vertical la intensidad luminosa y en el eje horizontal la hora UTC-3 (hora de
-Argentina).
+La página web, además, cumple ciertas restricciones:
 
+1. Las lecturas se producen cada 5 segundos.
+2. Si hay intervalos de tiempo sin lecturas (por pérdida de energía eléctrica por ejemplo), la gráfica muestra una discontinuidad.
+3. El gráfico no muestra todas las etiquetas de tiempo en el eje horizontal para facilitar la lectura. Únicamente muestra las marcas de tiempos por minutos.
+
+![alt text](image.png)
 
 
 
